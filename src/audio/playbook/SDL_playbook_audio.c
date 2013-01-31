@@ -53,7 +53,7 @@ static void DEBUG_doNothing (FILE * fd, char *format, ...) {
 
 /* environment variables and defaults. */
 
-#define PLAYBOOK_DEFAULT_WRITEDELAY   150
+#define PLAYBOOK_DEFAULT_WRITEDELAY   50
 
 /* Audio driver functions */
 static int PLAYBOOK_AUD_OpenAudio(_THIS, SDL_AudioSpec *spec);

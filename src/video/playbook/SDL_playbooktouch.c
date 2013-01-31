@@ -15,6 +15,11 @@
 
 #include "touchcontroloverlay.h"
 #include "SDL_playbookvideo.h"
+#include <unistd.h>  /* getcwd, chdir */
+
+
+extern void SDL_SYS_QnxDpadEvent(Uint8 state, SDL_keysym *keysym);
+
 
 int handleKey(int sym, int mod, int scancode, uint16_t unicode, int event)
 {
@@ -37,6 +42,8 @@ int handleKey(int sym, int mod, int scancode, uint16_t unicode, int event)
 	keysym.scancode = scancode;
 	keysym.unicode = unicode;
 	SDL_PrivateKeyboard(sdlEvent, &keysym);
+    SDL_SYS_QnxDpadEvent(sdlEvent, &keysym);
+
 	return TCO_SUCCESS;
 }
 
@@ -101,10 +108,13 @@ int handleDPad(int angle, int event)
 			}
 			keysym.sym = SDLK_UP + i;
 			keysym.scancode = scancodes[i];
-			SDL_PrivateKeyboard(sdlState, &keysym);
+
+		    SDL_PrivateKeyboard(sdlState, &keysym);
+			SDL_SYS_QnxDpadEvent(sdlState, &keysym);
 			pressed[i] = tmp[i];
 		}
 	}
+
 	return TCO_SUCCESS;
 }
 
@@ -216,7 +226,7 @@ void locateTCOControlFile(_THIS)
     char *homeDir = SDL_getenv("HOME");
     char fullPath[512];
     sprintf(fullPath, "%s/../%s", homeDir, filename);
-    int fd = fopen(fullPath, "r");
+    FILE *fd = fopen(fullPath, "r");
     if (fd) {
         _priv->tcoControlsDir = SDL_malloc(strlen(fullPath) - strlen(filename) + 1);
         strncpy(_priv->tcoControlsDir, fullPath, strlen(fullPath) - strlen(filename));
@@ -234,10 +244,24 @@ void locateTCOControlFile(_THIS)
     }
 }
 
+
+char* tcoGetUserXml()
+{
+  char *tco_custom_path = "/accounts/1000/shared/misc/tco.xml";
+  FILE *fd = fopen( tco_custom_path,"r");
+  if(fd)
+  {
+	   fclose(fd);
+	   return tco_custom_path;
+  }
+   return "sdl-controls.xml";
+}
+
+
 void initializeOverlay(_THIS, screen_window_t screenWindow)
 {
 	int loaded = 0;
-	const char *filename = "sdl-controls.xml";
+
 	struct tco_callbacks callbacks = {
 		handleKey, handleDPad, handleTouch, handleMouseButton, handleTap, handleTouchScreen
 	};
@@ -250,18 +274,22 @@ void initializeOverlay(_THIS, screen_window_t screenWindow)
 
 	tco_initialize(&_priv->emu_context, _priv->screenContext, callbacks);
 
-	// Load controls from file
+    char *filename = tcoGetUserXml();
 	char cwd[256];
-	if ((getcwd(cwd, 256) != NULL) && (chdir(_priv->tcoControlsDir) == 0)) {
-		if (tco_loadcontrols(_priv->emu_context, filename) == TCO_SUCCESS) {
-			loaded = 1;
-		}
+
+	if ( (getcwd(cwd, 256) != NULL) && (chdir(_priv->tcoControlsDir) == 0) )
+	  {
+	      if (tco_loadcontrols(_priv->emu_context, filename) == TCO_SUCCESS)
+	      {
+			   loaded = 1;
+	      }
 		chdir(cwd);
-	}
+	  }
 
 	// Clean up and set flags
 	SDL_free(_priv->tcoControlsDir);
-	if (loaded) {
+	if (loaded)
+	{
 		_priv->tcoControlsDir = 1;
 		tco_showlabels(_priv->emu_context, screenWindow);
 	} else {
@@ -269,3 +297,6 @@ void initializeOverlay(_THIS, screen_window_t screenWindow)
 		_priv->tcoControlsDir = 0;
 	}
 }
+
+
+

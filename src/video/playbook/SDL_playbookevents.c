@@ -540,6 +540,23 @@ static int TranslateVKB(int sym, int mods, int flags, int scan, int cap, SDL_key
 	return shifted;
 }
 
+static void handleKeyboardEvent(screen_event_t event);
+
+static void handleJoystickEvent(screen_event_t event)
+{
+
+ int num_devices;
+
+#ifdef SCREEN_PROPERTY_DEVICE_COUNT
+ screen_get_event_property_iv(event, SCREEN_PROPERTY_DEVICE_COUNT, &num_devices);
+
+ printf("handleJoystickEvent: devices=%d ", num_devices);
+
+ handleKeyboardEvent(event);
+#endif
+}
+
+
 static void handleKeyboardEvent(screen_event_t event)
 {
 	static const int KEYBOARD_TYPE_MASK = 0x20;
@@ -572,6 +589,7 @@ static void handleKeyboardEvent(screen_event_t event)
 		SDL_PrivateKeyboard(SDL_PRESSED, &temp);
     }
 
+
     SDL_PrivateKeyboard((flags & 0x1)?SDL_PRESSED:SDL_RELEASED, &keysym);
 
     if (shifted) {
@@ -580,6 +598,9 @@ static void handleKeyboardEvent(screen_event_t event)
 		temp.sym = SDLK_LSHIFT;
 		SDL_PrivateKeyboard(SDL_RELEASED, &temp);
     }
+
+    SDL_SYS_QnxDpadEvent((flags & 0x1)?SDL_PRESSED:SDL_RELEASED, &keysym);
+
 }
 
 static void handleMtouchEvent(screen_event_t event, screen_window_t window, int type)
@@ -719,6 +740,23 @@ void handleCustomEvent(_THIS, bps_event_t *event)
 	SDL_PrivateSysWMEvent(&wmmsg);
 }
 
+static void SDL_PauseActivity(int cmd)
+{
+	SDL_Event event;
+/*
+	if(cmd)
+	{
+		fprintf(stderr,"pause audio\n");
+		SDL_PauseAudio(1);
+	}
+	 else
+	{
+		fprintf(stderr,"start audio\n");
+		SDL_PauseAudio(0);
+	}
+*/
+}
+
 void handleNavigatorEvent(_THIS, bps_event_t *event)
 {
 	switch (bps_event_get_code(event))
@@ -727,7 +765,9 @@ void handleNavigatorEvent(_THIS, bps_event_t *event)
 		//fprintf(stderr, "Navigator invoke\n");
 		break;
 	case NAVIGATOR_EXIT:
-		SDL_PrivateQuit(); // We can't stop it from closing anyway
+		fprintf(stderr,"NAVIGATOR_EXIT\n");
+		// SDL_PrivateQuit(); // We can't stop it from closing anyway
+		exit(0);
 		break;
 	case NAVIGATOR_WINDOW_STATE:
 	{
@@ -735,15 +775,17 @@ void handleNavigatorEvent(_THIS, bps_event_t *event)
 		switch (state) {
 		case NAVIGATOR_WINDOW_FULLSCREEN:
 			SDL_PrivateAppActive(1, (SDL_APPACTIVE|SDL_APPINPUTFOCUS|SDL_APPMOUSEFOCUS));
-			//fprintf(stderr, "Fullscreen\n");
+			fprintf(stderr, "Fullscreen\n");
+			SDL_PauseActivity(0);
 			break;
 		case NAVIGATOR_WINDOW_THUMBNAIL:
 			SDL_PrivateAppActive(0, (SDL_APPINPUTFOCUS|SDL_APPMOUSEFOCUS));
-			//fprintf(stderr, "Thumbnail\n"); // TODO: Consider pausing?
+			fprintf(stderr, "Thumbnail\n"); // TODO: Consider pausing?
+			SDL_PauseActivity(1);
 			break;
 		case NAVIGATOR_WINDOW_INVISIBLE:
 			SDL_PrivateAppActive(0, (SDL_APPACTIVE|SDL_APPINPUTFOCUS|SDL_APPMOUSEFOCUS));
-			//fprintf(stderr, "Invisible\n"); // TODO: Consider pausing?
+			fprintf(stderr, "Invisible\n"); // TODO: Consider pausing?
 			break;
 		}
 	}
@@ -769,7 +811,7 @@ void handleNavigatorEvent(_THIS, bps_event_t *event)
 		//fprintf(stderr, "Swipe start\n");
 		break;
 	case NAVIGATOR_LOW_MEMORY:
-		//fprintf(stderr, "Low memory\n"); // TODO: Anything we can do?
+		fprintf(stderr, "Low memory\n"); // TODO: Anything we can do?
 		break;
 	case NAVIGATOR_ORIENTATION_CHECK:
 		//fprintf(stderr, "Orientation check\n");
@@ -781,17 +823,32 @@ void handleNavigatorEvent(_THIS, bps_event_t *event)
 		//fprintf(stderr, "Navigator back\n");
 		break;
 	case NAVIGATOR_WINDOW_ACTIVE:
-		//fprintf(stderr, "Window active\n"); // TODO: Handle?
+		fprintf(stderr, "Window active\n"); // TODO: Handle?
 		break;
 	case NAVIGATOR_WINDOW_INACTIVE:
-		//fprintf(stderr, "Window inactive\n"); // TODO: Handle?
+		fprintf(stderr, "Window inactive\n"); // TODO: Handle?
 		break;
+#ifdef NAVIGATOR_INVOKE_VIEWER_RESULT
+	case NAVIGATOR_INVOKE_VIEWER_RESULT:
+		fprintf(stderr,"invoke viewer result\n");
+		 break;
+#endif
+
+
 	default:
 		//fprintf(stderr, "Unknown navigator event: %d\n", bps_event_get_code(event));
 		break;
 	}
 }
 
+
+/* BB10+ only so if compiling for older 2.x PB loads need some dummy values */
+#ifndef SCREEN_EVENT_KEYBOARD
+#define SCREEN_EVENT_KEYBOARD -1
+#endif
+#ifndef SCREEN_EVENT_JOYSTICK
+#define SCREEN_EVENT_JOYSTICK -2
+#endif
 void handleScreenEvent(_THIS, bps_event_t *event)
 {
 	int type;
@@ -802,8 +859,19 @@ void handleScreenEvent(_THIS, bps_event_t *event)
 
 	screen_window_t window;
 	screen_get_event_property_pv(se, SCREEN_PROPERTY_WINDOW, (void **)&window);
-	if (!window && type != SCREEN_EVENT_KEYBOARD)
-		return;
+
+	if(!window)
+	{
+		switch(type)
+		{
+
+		   case SCREEN_EVENT_KEYBOARD:
+		   case SCREEN_EVENT_JOYSTICK:
+			    break;
+		   default: return;
+	    }
+	}
+
 
 	switch (type)
 	{
@@ -824,6 +892,15 @@ void handleScreenEvent(_THIS, bps_event_t *event)
 		case SCREEN_EVENT_KEYBOARD:
 			handleKeyboardEvent(se);
 			break;
+		case SCREEN_EVENT_JOYSTICK:
+			handleJoystickEvent(se);
+			break;
+#ifdef SCREEN_EVENT_GAMEPAD
+		case SCREEN_EVENT_GAMEPAD:
+			handleJoystickEvent(se);
+			break;
+#endif
+
 		case SCREEN_EVENT_MTOUCH_TOUCH:
 		case SCREEN_EVENT_MTOUCH_MOVE:
 		case SCREEN_EVENT_MTOUCH_RELEASE:

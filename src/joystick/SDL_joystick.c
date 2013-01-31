@@ -523,9 +523,10 @@ int SDL_PrivateJoystickButton(SDL_Joystick *joystick, Uint8 button, Uint8 state)
 	posted = 0;
 #if !SDL_EVENTS_DISABLED
 	if ( SDL_ProcessEvents[event.type] == SDL_ENABLE ) {
-		event.jbutton.which = joystick->index;
+		event.jbutton.which  = joystick->index;
 		event.jbutton.button = button;
-		event.jbutton.state = state;
+		event.jbutton.state  = state;
+
 		if ( (SDL_EventOK == NULL) || (*SDL_EventOK)(&event) ) {
 			posted = 1;
 			SDL_PushEvent(&event);
